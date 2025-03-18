@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from PIL import Image
 import tempfile
-from ai import ProductImageIntegrator
+from main import ProductImageIntegrator
 
 # Set page config
 st.set_page_config(
