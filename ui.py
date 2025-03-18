@@ -59,20 +59,33 @@ col1, col2 = st.columns(2)
 with col1:
     st.header("Input Images")
     
-    # Product image upload
+    # # Product image upload
     product_file = st.file_uploader("Upload Product Image", type=["png", "jpg", "jpeg"])
+    # if product_file is not None:
+    #     product_image = Image.open(product_file)
+    #     st.image(product_image, caption="Product Image", use_column_width=True)
+    #     product_path = save_uploaded_file(product_file)
+    
+    # # Background image upload
+    background_file = st.file_uploader("Upload Background Scene", type=["png", "jpg", "jpeg"])
+    # if background_file is not None:
+    #     background_image = Image.open(background_file)
+    #     st.image(background_image, caption="Background Scene", use_column_width=True)
+    #     background_path = save_uploaded_file(background_file)
     if product_file is not None:
         product_image = Image.open(product_file)
-        st.image(product_image, caption="Product Image", use_column_width=True)
+        st.image(product_image, caption="Product Image", use_container_width=True)
         product_path = save_uploaded_file(product_file)
-    
+
     # Background image upload
-    background_file = st.file_uploader("Upload Background Scene", type=["png", "jpg", "jpeg"])
     if background_file is not None:
         background_image = Image.open(background_file)
-        st.image(background_image, caption="Background Scene", use_column_width=True)
+        st.image(background_image, caption="Background Scene", use_container_width=True)
         background_path = save_uploaded_file(background_file)
-    
+
+    # In the output panel section
+    if st.session_state.processing_complete and st.session_state.processed_image is not None:
+        st.image(st.session_state.processed_image, caption="Integrated Result", use_container_width=True)
     # Process button
     if product_file is not None and background_file is not None:
         if st.button("Integrate Product into Scene"):

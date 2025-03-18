@@ -589,88 +589,167 @@ class ProductImageIntegrator:
         
         return final_composite
 
-def generate_background_description(self, background_image):
-    """Generate a description of the background scene using CLIP"""
-    # Preprocess the image
-    inputs = self.clip_processor(
-        text=["living room", "bedroom", "kitchen", "office", "outdoor scene"],
-        images=background_image,
-        return_tensors="pt",
-        padding=True
-    )
-    
-    # Get model outputs
-    outputs = self.clip_model(**inputs)
-    probs = outputs.logits_per_image.softmax(dim=1)[0]
-    
-    # Get top scene type
-    top_scene_idx = probs.argmax().item()
-    scene_types = ["living room", "bedroom", "kitchen", "office", "outdoor scene"]
-    
-    return scene_types[top_scene_idx]
+    def generate_background_description(self, background_image):
+        """Generate a description of the background scene using CLIP"""
+        # Preprocess the image
+        inputs = self.clip_processor(
+            text=["living room", "bedroom", "kitchen", "office", "outdoor scene"],
+            images=background_image,
+            return_tensors="pt",
+            padding=True
+        )
+        
+        # Get model outputs
+        outputs = self.clip_model(**inputs)
+        probs = outputs.logits_per_image.softmax(dim=1)[0]
+        
+        # Get top scene type
+        top_scene_idx = probs.argmax().item()
+        scene_types = ["living room", "bedroom", "kitchen", "office", "outdoor scene"]
+        
+        return scene_types[top_scene_idx]
 
-def identify_product_type(self, product_image):
-    """Identify the type of product using CLIP"""
-    # Convert to PIL for CLIP processing
-    if not isinstance(product_image, Image.Image):
-        if product_image.shape[2] == 4:  # RGBA
-            product_pil = Image.fromarray(product_image[:, :, :3])
+    def identify_product_type(self, product_image):
+        """Identify the type of product using CLIP"""
+        # Convert to PIL for CLIP processing
+        if not isinstance(product_image, Image.Image):
+            if product_image.shape[2] == 4:  # RGBA
+                product_pil = Image.fromarray(product_image[:, :, :3])
+            else:
+                product_pil = Image.fromarray(product_image)
         else:
-            product_pil = Image.fromarray(product_image)
-    else:
-        product_pil = product_image
-    
-    # Common product types for e-commerce
-    product_types = [
-        "a vase", "a lamp", "decorative cushions", "a chair", "a desk", 
-        "a bookshelf", "wall art", "a clock", "a plant pot", "a decorative figurine",
-        "a candle holder", "a coffee table", "a side table", "home decor item"
-    ]
-    
-    # Preprocess the image
-    inputs = self.clip_processor(
-        text=product_types,
-        images=product_pil,
-        return_tensors="pt",
-        padding=True
-    )
-    
-    # Get model outputs
-    outputs = self.clip_model(**inputs)
-    probs = outputs.logits_per_image.softmax(dim=1)[0]
-    
-    # Get top product type
-    top_product_idx = probs.argmax().item()
-    
-    return product_types[top_product_idx]
+            product_pil = product_image
+        
+        # Common product types for e-commerce
+        product_types = [
+            "a vase", "a lamp", "decorative cushions", "a chair", "a desk", 
+            "a bookshelf", "wall art", "a clock", "a plant pot", "a decorative figurine",
+            "a candle holder", "a coffee table", "a side table", "home decor item"
+        ]
+        
+        # Preprocess the image
+        inputs = self.clip_processor(
+            text=product_types,
+            images=product_pil,
+            return_tensors="pt",
+            padding=True
+        )
+        
+        # Get model outputs
+        outputs = self.clip_model(**inputs)
+        probs = outputs.logits_per_image.softmax(dim=1)[0]
+        
+        # Get top product type
+        top_product_idx = probs.argmax().item()
+        
+        return product_types[top_product_idx]
+    def select_best_placement(self, placement_areas, product_no_bg):
+        """Select the best placement area based on product size and scene context"""
+        # If no placement areas found, return a default area
+        if not placement_areas or len(placement_areas) == 0:
+            return {"x": 0, "y": 0, "width": 100, "height": 100, "score": 0.5}
+        
+        # Convert product to numpy array if it's a PIL Image
+        if isinstance(product_no_bg, Image.Image):
+            product_array = np.array(product_no_bg)
+        else:
+            product_array = product_no_bg
+        
+        # Get product dimensions
+        product_height, product_width = product_array.shape[:2]
+        
+        # Find the best placement area based on size compatibility and score
+        best_area = None
+        best_score = -1
+        
+        for area in placement_areas:
+            # Check if product fits in this area with reasonable scaling
+            area_ratio = min(area["width"] / product_width, area["height"] / product_height)
+            
+            # Skip areas that would require extreme scaling
+            if area_ratio < 0.2 or area_ratio > 5:
+                continue
+            
+            # Calculate a combined score based on area score and fit
+            fit_score = 1 - abs(1 - area_ratio)  # 1 is perfect fit, 0 is poor fit
+            combined_score = area["score"] * 0.7 + fit_score * 0.3
+            
+            if combined_score > best_score:
+                best_score = combined_score
+                best_area = area
+        
+        # If no suitable area found, return the highest scoring area
+        if best_area is None and len(placement_areas) > 0:
+            best_area = max(placement_areas, key=lambda x: x["score"])
+        
+        return best_area
     
     def process_image_pair(self, product_path, background_path):
         """Process a single product and background pair"""
-        # Load images
-        product_img = Image.open(product_path)
-        background_img = Image.open(background_path)
-        
-        # Remove background from product
-        product_no_bg = self.remove_background(product_img)
-        
-        # Analyze scene for placement
-        placement_areas = self.analyze_scene(background_img)
-        
-        # Choose best placement
-        best_area = self.select_best_placement(placement_areas, product_no_bg)
-        
-        # Transform product for placement
-        transformed_product, mask, position = self.optimize_placement(
-            product_no_bg, background_img, best_area)
-        
-        # Adjust lighting
-        lit_product = self.adjust_lighting(transformed_product, background_img, position)
-        
-        # Blend images
-        final_result = self.blend_images(lit_product, background_img, mask, position)
-        
-        return final_result
-    
+        try:
+            # Load images
+            product_img = Image.open(product_path)
+            background_img = Image.open(background_path)
+            
+            # Debugging image sizes
+            print(f"Product Image size: {product_img.size}")  # (width, height)
+            print(f"Background Image size: {background_img.size}")  # (width, height)
+
+            if not product_img or not background_img:
+                raise ValueError("One of the images failed to load correctly.")
+
+            # Remove background from product
+            product_no_bg = self.remove_background(product_img)
+            if product_no_bg is None:
+                raise ValueError("Background removal failed. 'product_no_bg' is None.")
+            
+            # Debugging the result of background removal
+            print(f"Product after background removal size: {product_no_bg.size}")
+
+            # Analyze scene for placement
+            placement_areas = self.analyze_scene(background_img)
+            if not placement_areas:
+                raise ValueError("No valid placement areas found.")
+
+            # Debugging placement areas
+            print(f"Placement areas: {placement_areas}")
+
+            # Choose best placement
+            best_area = self.select_best_placement(placement_areas, product_no_bg)
+            if best_area is None:
+                raise ValueError("Best placement area not found.")
+
+            # Transform product for placement
+            transformed_product, mask, position = self.optimize_placement(
+                product_no_bg, background_img, best_area)
+            if transformed_product is None or mask is None:
+                raise ValueError("Product transformation failed.")
+            
+            # Debugging transformed product
+            print(f"Transformed product size: {transformed_product.size}")
+
+            # Adjust lighting
+            lit_product = self.adjust_lighting(transformed_product, background_img, position)
+            if lit_product is None:
+                raise ValueError("Lighting adjustment failed.")
+            
+            # Debugging lit product
+            print(f"Lit product size: {lit_product.size}")
+
+            # Blend images
+            final_result = self.blend_images(lit_product, background_img, mask, position)
+            if final_result is None:
+                raise ValueError("Blending failed.")
+            
+            # Debugging final result
+            print(f"Final result size: {final_result.size}")
+
+            return final_result
+
+        except Exception as e:
+            print(f"Error during processing: {e}")
+            raise
+
     def batch_process(self, product_dir, background_dir, output_dir):
         """Process multiple product-background pairs"""
         os.makedirs(output_dir, exist_ok=True)
